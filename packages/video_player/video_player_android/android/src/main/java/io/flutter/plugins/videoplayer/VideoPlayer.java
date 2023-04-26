@@ -21,6 +21,7 @@ import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.Player.Listener;
 import com.google.android.exoplayer2.audio.AudioAttributes;
+import com.google.android.exoplayer2.database.StandaloneDatabaseProvider;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.dash.DashMediaSource;
@@ -31,6 +32,10 @@ import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.android.exoplayer2.upstream.cache.SimpleCache;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSource.Factory;
+import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
 import com.google.android.exoplayer2.util.Util;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.view.TextureRegistry;
@@ -63,6 +68,7 @@ final class VideoPlayer {
   private final VideoPlayerOptions options;
 
   private DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
+  private SimpleCache simpleCache;
 
   VideoPlayer(
       Context context,
@@ -82,6 +88,18 @@ final class VideoPlayer {
     buildHttpDataSourceFactory(httpHeaders);
     DataSource.Factory dataSourceFactory =
         new DefaultDataSource.Factory(context, httpDataSourceFactory);
+
+    if (dataSource.indexOf("/ritual-video-loop/") > 0) {
+        simpleCache = new SimpleCache(
+            context.getCacheDir(),
+            new LeastRecentlyUsedCacheEvictor(1024*1024*48),
+            new StandaloneDatabaseProvider(context)
+        );
+        CacheDataSource.Factory cacheSourceFactory = new CacheDataSource.Factory();
+        cacheSourceFactory.setCache(simpleCache);
+        cacheSourceFactory.setUpstreamDataSourceFactory(dataSourceFactory);
+        dataSourceFactory = cacheSourceFactory;
+    }
 
     MediaSource mediaSource = buildMediaSource(uri, dataSourceFactory, formatHint, context);
 
@@ -334,6 +352,9 @@ final class VideoPlayer {
     eventChannel.setStreamHandler(null);
     if (surface != null) {
       surface.release();
+    }
+    if (simpleCache != null) {
+        simpleCache.release();
     }
     if (exoPlayer != null) {
       exoPlayer.release();
